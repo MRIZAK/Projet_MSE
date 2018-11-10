@@ -52,7 +52,7 @@ void I2c_Read (uint8_t add, uint8_t nb_byte, uint8_t *data); // Acquisition des 
 void I2c_Write (uint8_t add, uint8_t nb_byte, uint8_t *data); // Ecriture sur les registres du capteur de Température
 /* MOTEUR */
 void Timer_Init (void); // Initialisation du timer pour le moteur
-void PWM_Config (uint8_t alpha, uint8_t freq); // Configuration d'une PWM variable
+void PWM_Config (uint32_t alpha); // Configuration d'une PWM variable
 void Speed_Set (uint8_t temp); // Asservissement de la vitesse en fonction de la température 
 /* LED */
 uint8_t is_dangerous(uint8_t temp); // Allumage des led en fonction de la température
@@ -68,7 +68,13 @@ void Delay (uint32_t);
   */
 int main(void)
 {
-	
+	Clock_Init();
+	Gpio_Init();
+	Timer_Init();
+	//PWM_Config(1000); // Debug
+	while(1)
+	{
+	}
 }
 
 /* Private function declaration -----------------------------------------------*/
@@ -76,6 +82,9 @@ void Clock_Init (void)// Initialisation de l'ensemble des clock
 {
 	// Input : None 
 	// Output : None
+	//###########################################################################################
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE); // Init clock GPIOB
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);// Init clock TIM3
 	
 }	
 
@@ -83,6 +92,16 @@ void Gpio_Init (void) // Initialisation des GPIO
 {
 	// Input : None 
 	// Output : None
+	//###########################################################################################
+	/** TypeDef declaration **/
+	GPIO_InitTypeDef pin_GPIOB;
+	
+	/** Configuration GPIOB Moteur **/
+	pin_GPIOB.GPIO_Pin = GPIO_Pin_4; 
+	pin_GPIOB.GPIO_Mode = GPIO_Mode_AF;
+  pin_GPIOB.GPIO_Speed = GPIO_Speed_40MHz;
+	GPIO_Init(GPIOB, &pin_GPIOB);	
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource4, GPIO_AF_TIM3);
 }
 
 /* AFFICHEUR 7 SEGMENTS */
@@ -134,11 +153,38 @@ void Timer_Init (void) // Initialisation du timer pour le moteur
 {
 	// Input : None  
 	// Output : None
+	//###############################################################################
+	/** TypeDef declaration **/
+		TIM_TimeBaseInitTypeDef timer;
+	/** Configuration TIM3 Moteur **/
+	timer.TIM_ClockDivision = TIM_CKD_DIV1; // Division de la clock par 1
+	timer.TIM_CounterMode = TIM_CounterMode_Up; // Mode incrémentation du compteur
+	timer.TIM_Period = 1000; // Periode de la PWM
+	timer.TIM_Prescaler = 500; // Division de la clock par 500
+	TIM_TimeBaseInit(TIM3, &timer);	
+	TIM_SetAutoreload(TIM3, 0x2710); // Valeur max du nombre de comptage = 10 000 
+	TIM_Cmd(TIM3, ENABLE); // Activation du TIM3
+	
+	TIM_OCInitTypeDef channel = {0,};
+  channel.TIM_OCMode = TIM_OCMode_PWM1; // Initialisation du mode de comparaison pour générer une PWM
+  channel.TIM_Pulse = 0; // On initialise le rapport cyclique de la PWM à 0%
+  channel.TIM_OutputState = TIM_OutputState_Enable;
+  channel.TIM_OCPolarity = TIM_OCPolarity_High;
+ 
+  TIM_OC1Init(TIM3, &channel);
+  TIM_OC1PreloadConfig(TIM3, TIM_OCPreload_Enable);
 }
-void PWM_Config (uint8_t alpha, uint8_t freq) // Configuration d'une PWM variable
+void PWM_Config (uint32_t alpha) // Configuration d'une PWM variable
 {
-	// Input : alpha, freq 
+	// Input : alpha 
 	// Output : None
+	//###############################################################################
+	if (alpha > 0 || alpha < 1000) // Gestion des erreurs
+	{
+	TIM_OCInitTypeDef channel;
+		channel.TIM_Pulse = alpha; // Association de la valeur alpha au temps haut de la PWM = rapport cyclique
+	TIM3->CCR1 = channel.TIM_Pulse;
+	}
 }
 void Speed_Set (uint8_t temp)// Asservissement de la vitesse en fonction de la température 
 {
